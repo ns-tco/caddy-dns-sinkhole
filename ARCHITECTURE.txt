@@ -1,0 +1,243 @@
+# Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         INTERNET / CLIENT                        │
+│                     (Needs SSL Certificate)                      │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               │ HTTPS Request
+                               │ (example.com)
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    CADDY REVERSE PROXY                           │
+│                    (Container: caddy-server)                     │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  On-Demand TLS                                            │  │
+│  │  • Generates SSL cert for ANY hostname                    │  │
+│  │  • Uses internal CA                                       │  │
+│  │  • Certificate cached in /data                            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Reverse Proxy                                            │  │
+│  │  • Routes ALL requests to localhost:3000                  │  │
+│  │  • Adds security headers                                  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  Ports: 80, 443, 2019 (admin)                                   │
+│  IP: 192.168.53.46 (configurable)                               │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               │ HTTP Request
+                               │ (proxied)
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                     BLOCK HANDLER                                │
+│                  (Container: block-handler)                      │
+│                    Node.js Application                           │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  1. Extract hostname from request                         │  │
+│  │  2. Build API query                                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                               │                                  │
+│                               │ API Call                         │
+│                               ↓                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Query Netskope API                                       │  │
+│  │  POST https://nskp-io.goskope.com/api/v2/nsiq/urllookup  │  │
+│  │  Authorization: Bearer TOKEN                              │  │
+│  │  Body: { urls: ["https://example.com"] }                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                               │                                  │
+│                               │ API Response                     │
+│                               ↓                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  3. Extract category from response                        │  │
+│  │  4. Render blocked.html template                          │  │
+│  │  5. Replace {{URL}} and {{CATEGORY}} placeholders        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  Port: 3000 (internal)                                           │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               │ HTML Response
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                      BLOCK PAGE                                  │
+│                                                                   │
+│  ╔═══════════════════════════════════════════════════════════╗  │
+│  ║ nskp.io                                                    ║  │
+│  ╠═══════════════════════════════════════════════════════════╣  │
+│  ║                                                            ║  │
+│  ║  Web Site Blocked                                         ║  │
+│  ║                                                            ║  │
+│  ║  The website you are attempting to access is prohibited   ║  │
+│  ║                                                            ║  │
+│  ║  ┌─────────────────────────────────────────────────────┐ ║  │
+│  ║  │ Website: https://example.com                        │ ║  │
+│  ║  │ Category: Adult Content; Pornography                │ ║  │
+│  ║  └─────────────────────────────────────────────────────┘ ║  │
+│  ║                                                            ║  │
+│  ║  [  OK  ]                                                 ║  │
+│  ║                                                            ║  │
+│  ╚═══════════════════════════════════════════════════════════╝  │
+└─────────────────────────────────────────────────────────────────┘
+
+
+DATA FLOW DIAGRAM
+═════════════════
+
+Client Request
+      ↓
+   [Port 443]
+      ↓
+   [Caddy: TLS Termination]
+      ↓
+   [Caddy: Reverse Proxy]
+      ↓
+   [Port 3000]
+      ↓
+   [Block Handler: Extract Hostname]
+      ↓
+   [Block Handler: Query API] ──→ [Netskope API]
+      ↓                                  ↓
+   [Block Handler: Parse Response] ←────┘
+      ↓
+   [Block Handler: Render HTML]
+      ↓
+   [HTTP Response with Block Page]
+      ↓
+   [Caddy: Proxy Response]
+      ↓
+   [HTTPS Response to Client]
+
+
+NETWORK TOPOLOGY
+════════════════
+
+┌──────────────────────────────────────────────────────────┐
+│  Host Network (macvlan_42)                               │
+│  Subnet: 192.168.53.0/24                                 │
+│  Gateway: 192.168.53.1                                   │
+│                                                           │
+│  ┌────────────────────┐      ┌────────────────────┐    │
+│  │  caddy-server      │      │  block-handler     │    │
+│  │  192.168.53.46     │◄────►│  (dynamic IP)      │    │
+│  │                    │      │                    │    │
+│  │  Ports:            │      │  Port:             │    │
+│  │  - 80 (HTTP)       │      │  - 3000 (HTTP)     │    │
+│  │  - 443 (HTTPS)     │      │                    │    │
+│  │  - 2019 (Admin)    │      │                    │    │
+│  └────────────────────┘      └────────────────────┘    │
+│                                                           │
+└──────────────────────────────────────────────────────────┘
+                      │
+                      │ Internet Connection
+                      ↓
+        [Netskope API: nskp-io.goskope.com]
+
+
+CERTIFICATE FLOW
+════════════════
+
+1. Client connects to https://example.com
+2. Caddy checks if certificate exists for example.com
+3. If not, Caddy generates certificate using internal CA
+4. Certificate cached in /data/caddy/certificates/
+5. TLS connection established
+6. Request proxied to block-handler
+
+
+FILE STRUCTURE
+══════════════
+
+caddy-deploy/
+├── docker-compose.yml           ← Main configuration
+│   ├── services
+│   │   ├── caddy                ← Reverse proxy
+│   │   └── block-handler        ← API handler
+│   └── networks
+│       └── macvlan_42           ← External network
+│
+├── caddy_config/
+│   └── Caddyfile                ← Proxy rules
+│       ├── Global config        ← TLS, PKI
+│       ├── Catch-all route      ← https://
+│       └── Admin API            ← :2019
+│
+├── block-handler/
+│   ├── server.js                ← Main logic
+│   │   ├── queryNetskopeAPI()   ← API client
+│   │   ├── extractCategories()  ← Parse response
+│   │   └── http.createServer()  ← HTTP server
+│   ├── blocked.html             ← Template
+│   └── package.json             ← Dependencies
+│
+└── [runtime directories]
+    ├── data/                    ← Caddy data & certs
+    ├── config/                  ← Caddy config
+    ├── certs/                   ← Certificate storage
+    └── ca/                      ← CA files
+
+
+DEPLOYMENT FLOW
+═══════════════
+
+1. Extract Package
+   └── tar -xzf caddy-deploy.tar.gz
+
+2. Configure
+   ├── Edit docker-compose.yml
+   │   ├── Set ipv4_address
+   │   └── Set API credentials
+   └── (Optional) Edit blocked.html
+
+3. Create Network
+   └── docker network create macvlan_42
+
+4. Deploy
+   ├── ./deploy.sh (automated)
+   └── OR docker-compose up -d (manual)
+
+5. Verify
+   ├── docker-compose ps
+   ├── docker-compose logs
+   └── curl test
+
+6. Configure Clients
+   └── Point to 192.168.53.46
+
+
+REQUEST EXAMPLE
+═══════════════
+
+Timeline of a blocked request:
+
+00:00.000  Client: DNS lookup for "badsite.com"
+00:00.050  Client: Connect to 192.168.53.46:443
+00:00.100  Caddy: TLS handshake begins
+00:00.150  Caddy: Check certificate cache for badsite.com
+00:00.160  Caddy: Certificate not found
+00:00.170  Caddy: Generate certificate using internal CA
+00:00.200  Caddy: TLS handshake complete
+00:00.210  Caddy: Receive HTTP request for badsite.com
+00:00.220  Caddy: Proxy request to localhost:3000
+00:00.230  Block Handler: Receive request
+00:00.240  Block Handler: Extract hostname "badsite.com"
+00:00.250  Block Handler: Build API request
+00:00.300  Block Handler: Send HTTPS POST to Netskope API
+00:00.500  Netskope API: Process request
+00:00.700  Block Handler: Receive API response
+00:00.710  Block Handler: Parse categories from response
+00:00.720  Block Handler: Load blocked.html template
+00:00.730  Block Handler: Replace {{URL}} and {{CATEGORY}}
+00:00.740  Block Handler: Send HTML response
+00:00.750  Caddy: Receive response from block handler
+00:00.760  Caddy: Proxy response to client
+00:00.800  Client: Render block page in browser
+
+Total: 800ms
+```

@@ -1,0 +1,20 @@
+# Environment files with secrets
+.env
+
+# Docker volumes and runtime data
+data/
+config/
+certs/
+ca/
+
+# Node modules
+node_modules/
+block-handler/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

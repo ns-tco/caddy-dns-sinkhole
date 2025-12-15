@@ -1,0 +1,48 @@
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy-server
+    restart: unless-stopped
+    hostname: caddy-server
+    networks:
+      - caddy-network
+    volumes:
+      - ./caddy_config:/etc/caddy
+      - ./data:/data
+      - ./config:/config
+      - ./certs:/certs
+      - ./ca:/ca
+      - ./www:/usr/share/caddy
+    environment:
+      - TZ=America/Chicago
+    ports:
+      # Exposed on port 443 for external access (173.167.175.162:443)
+      # and also on port 5656 for local testing
+      - "443:443"
+      - "443:443/udp"
+      - "5656:443"
+      - "5656:443/udp"
+      # Admin port removed from exposure for security
+      # Access admin API via: docker compose exec caddy ...
+    depends_on:
+      - block-handler
+
+  block-handler:
+    image: node:20-alpine
+    container_name: block-handler
+    restart: unless-stopped
+    working_dir: /app
+    networks:
+      - caddy-network
+    volumes:
+      - ./block-handler:/app
+    command: node server.js
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+
+networks:
+  caddy-network:
+    driver: bridge
+

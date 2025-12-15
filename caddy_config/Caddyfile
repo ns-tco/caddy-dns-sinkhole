@@ -1,0 +1,49 @@
+{
+    # Configure the nskp.io Certificate Authority
+    pki {
+        ca nskp {
+            name "nskp.io"
+            root_cn "nskp.io Root CA"
+            intermediate_cn "nskp.io Intermediate CA"
+        }
+    }
+
+    # Enable on-demand TLS for any hostname
+    on_demand_tls {
+        ask http://localhost:2019/allowed
+    }
+
+    # Default certificate issuer
+    cert_issuer internal {
+        ca nskp
+    }
+}
+
+# Catch-all block - responds to ANY hostname
+https:// {
+    # Enable on-demand TLS
+    tls {
+        on_demand
+    }
+    
+    # Reverse proxy to category lookup handler
+    reverse_proxy block-handler:3000
+    
+    # Add security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+    }
+}
+
+# Admin API endpoint for on-demand TLS validation
+# SECURITY: Only accessible from localhost/container network
+:2019 {
+    # Certificate validation endpoint - always allow
+    # This endpoint is used by Caddy's on-demand TLS to validate certificate requests
+    respond /allowed 200
+
+    # Block all other requests for security
+    respond 404
+}

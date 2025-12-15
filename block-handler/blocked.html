@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Site Blocked</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .logo-bar {
+            background: #00A1DF;
+            padding: 28px 40px;
+            display: flex;
+            align-items: center;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+        }
+        .logo-icon {
+            height: 40px;
+            width: auto;
+        }
+        .content {
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 24px;
+            font-weight: 400;
+        }
+        .message {
+            color: #333;
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        .details {
+            background: #f9f9f9;
+            padding: 20px;
+            border-left: 4px solid #00A1DF;
+            margin: 24px 0;
+            color: #666;
+            font-size: 15px;
+            line-height: 1.8;
+        }
+        .url-display {
+            word-break: break-all;
+            color: #00A1DF;
+            font-weight: 500;
+        }
+        .category-badge {
+            display: inline-block;
+            background: #FFE5E5;
+            color: #D32F2F;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 8px 0;
+        }
+        .button-container {
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid #e0e0e0;
+        }
+        .ok-button {
+            background: #00A1DF;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .ok-button:hover {
+            background: #0088C0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-bar">
+            <div class="logo-container">
+                <img src="/netskope-logo.png" alt="Netskope" class="logo-icon">
+            </div>
+        </div>
+        
+        <div class="content">
+            <h1>🚫 Web Site Blocked</h1>
+            
+            <p class="message">
+                The website you are attempting to access has been blocked by your organization's security policy.
+            </p>
+            
+            <div class="details">
+                <strong>Blocked URL:</strong><br>
+                <span class="url-display">{{URL}}</span>
+                <br><br>
+                <strong>Category:</strong><br>
+                <span class="category-badge">{{CATEGORY}}</span>
+                <br><br>
+                This category is prohibited by your organization's IT policy.
+            </div>
+            
+            <p class="message" style="font-size: 14px; color: #666;">
+                If you believe this is an error, please contact your IT administrator.
+            </p>
+            
+            <div class="button-container">
+                <button class="ok-button" onclick="window.history.back()">← Go Back</button>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Protected by Netskope Security Cloud
+        </div>
+    </div>
+</body>
+</html>
