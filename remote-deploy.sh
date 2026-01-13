@@ -78,15 +78,20 @@ else
     echo "✓ Docker already installed"
 fi
 
-# Check for docker-compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+# Check for docker compose (prefer plugin, fallback to standalone)
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+    echo "✓ Docker Compose plugin already installed"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+    echo "✓ Docker Compose standalone already installed"
+else
     echo "Installing Docker Compose..."
     COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
     curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
+    COMPOSE_CMD="docker-compose"
     echo "✓ Docker Compose installed"
-else
-    echo "✓ Docker Compose already installed"
 fi
 
 echo "[4/6] Extracting deployment package..."
@@ -113,20 +118,36 @@ if [ -n "$API_TOKEN" ]; then
 fi
 
 echo "[6/6] Starting containers..."
-docker-compose up -d
+$COMPOSE_CMD up -d
 
 echo ""
-echo "Waiting for containers to start..."
-sleep 5
+echo "Waiting for services to become healthy..."
+MAX_WAIT=60
+WAIT_TIME=0
+while [ $WAIT_TIME -lt $MAX_WAIT ]; do
+    if docker ps --filter "name=caddy-server" --filter "health=healthy" --format "{{.Names}}" | grep -q "caddy-server" && \
+       docker ps --filter "name=block-handler" --filter "health=healthy" --format "{{.Names}}" | grep -q "block-handler"; then
+        echo "✓ All services are healthy"
+        break
+    fi
+    sleep 2
+    WAIT_TIME=$((WAIT_TIME + 2))
+    echo -n "."
+done
+echo ""
+
+if [ $WAIT_TIME -ge $MAX_WAIT ]; then
+    echo "⚠ Warning: Services may not be fully healthy yet"
+fi
 
 echo ""
 echo "======================================"
 echo "Deployment Status"
 echo "======================================"
-docker-compose ps
+$COMPOSE_CMD ps
 
 echo ""
-if docker exec caddy-server wget -q -O- http://block-handler:3000 >/dev/null 2>&1; then
+if docker exec caddy-server wget -q -O- http://block-handler:3000/health >/dev/null 2>&1; then
     echo "✓ Internal connectivity OK"
 else
     echo "⚠ Warning: Internal connectivity check failed"
@@ -143,7 +164,7 @@ echo "Test with:"
 echo "  curl -k https://example.com:5656"
 echo ""
 echo "View logs:"
-echo "  cd $DEPLOY_DIR && docker-compose logs -f"
+echo "  cd $DEPLOY_DIR && $COMPOSE_CMD logs -f"
 echo ""
 EOFSCRIPT
 
@@ -164,6 +185,6 @@ echo "Access on port: 5656"
 echo ""
 echo "Next steps:"
 echo "  1. Test: curl -k https://test.com:5656"
-echo "  2. View logs: ssh $SSH_HOST 'cd $DEPLOY_DIR && docker-compose logs -f'"
+echo "  2. View logs: ssh $SSH_HOST 'cd $DEPLOY_DIR && $COMPOSE_CMD logs -f'"
 echo "  3. Customize block page: ssh $SSH_HOST and edit $DEPLOY_DIR/block-handler/blocked.html"
 echo ""

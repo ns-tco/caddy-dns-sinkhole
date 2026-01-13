@@ -44,12 +44,17 @@ if ! command -v docker &> /dev/null; then
 fi
 print_status "Docker is installed"
 
-# Check Docker Compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+# Check Docker Compose (prefer newer docker compose plugin)
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+    print_status "Docker Compose plugin is installed"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+    print_warning "Using legacy docker-compose command (consider upgrading to docker compose plugin)"
+else
     print_error "Docker Compose is not installed. Please install Docker Compose first."
     exit 1
 fi
-print_status "Docker Compose is installed"
 
 # Check if containers are already running
 echo ""
@@ -60,7 +65,7 @@ if docker ps -a | grep -q "caddy-server\|block-handler"; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Stopping and removing containers..."
-        docker-compose down
+        $COMPOSE_CMD down
         print_status "Containers removed"
     fi
 fi
@@ -73,15 +78,31 @@ echo "======================================"
 echo ""
 
 echo "Pulling latest images..."
-docker-compose pull
+$COMPOSE_CMD pull
 
 echo ""
 echo "Starting services..."
-docker-compose up -d
+$COMPOSE_CMD up -d
 
 echo ""
-echo "Waiting for services to start..."
-sleep 5
+echo "Waiting for services to become healthy..."
+MAX_WAIT=60
+WAIT_TIME=0
+while [ $WAIT_TIME -lt $MAX_WAIT ]; do
+    if docker ps --filter "name=caddy-server" --filter "health=healthy" --format "{{.Names}}" | grep -q "caddy-server" && \
+       docker ps --filter "name=block-handler" --filter "health=healthy" --format "{{.Names}}" | grep -q "block-handler"; then
+        print_status "All services are healthy"
+        break
+    fi
+    sleep 2
+    WAIT_TIME=$((WAIT_TIME + 2))
+    echo -n "."
+done
+echo ""
+
+if [ $WAIT_TIME -ge $MAX_WAIT ]; then
+    print_warning "Services may not be fully healthy yet. Check logs with: $COMPOSE_CMD logs"
+fi
 
 # Check status
 echo ""
@@ -91,17 +112,31 @@ echo "======================================"
 echo ""
 
 if docker ps | grep -q "caddy-server"; then
-    print_status "Caddy server is running"
+    HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' caddy-server 2>/dev/null || echo "unknown")
+    if [ "$HEALTH_STATUS" = "healthy" ]; then
+        print_status "Caddy server is running and healthy"
+    elif [ "$HEALTH_STATUS" = "starting" ]; then
+        print_warning "Caddy server is running but still starting up"
+    else
+        print_status "Caddy server is running (health: $HEALTH_STATUS)"
+    fi
 else
     print_error "Caddy server failed to start"
-    echo "Check logs with: docker-compose logs caddy"
+    echo "Check logs with: $COMPOSE_CMD logs caddy"
 fi
 
 if docker ps | grep -q "block-handler"; then
-    print_status "Block handler is running"
+    HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' block-handler 2>/dev/null || echo "unknown")
+    if [ "$HEALTH_STATUS" = "healthy" ]; then
+        print_status "Block handler is running and healthy"
+    elif [ "$HEALTH_STATUS" = "starting" ]; then
+        print_warning "Block handler is running but still starting up"
+    else
+        print_status "Block handler is running (health: $HEALTH_STATUS)"
+    fi
 else
     print_error "Block handler failed to start"
-    echo "Check logs with: docker-compose logs block-handler"
+    echo "Check logs with: $COMPOSE_CMD logs block-handler"
 fi
 
 echo ""
@@ -114,9 +149,10 @@ echo "  - HTTPS: port 5656"
 echo "  - Admin: port 2019"
 echo ""
 echo "Useful commands:"
-echo "  View logs:     docker-compose logs -f"
-echo "  Stop services: docker-compose down"
-echo "  Restart:       docker-compose restart"
+echo "  View logs:     $COMPOSE_CMD logs -f"
+echo "  Stop services: $COMPOSE_CMD down"
+echo "  Restart:       $COMPOSE_CMD restart"
+echo "  Status:        $COMPOSE_CMD ps"
 echo ""
 echo "To test the proxy:"
 echo "  curl -k https://example.com:5656"

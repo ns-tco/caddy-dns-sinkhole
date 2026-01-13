@@ -1,18 +1,18 @@
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:2.7-alpine
     container_name: caddy-server
     restart: unless-stopped
     hostname: caddy-server
     networks:
       - caddy-network
     volumes:
-      - ./caddy_config:/etc/caddy
+      - ./caddy_config:/etc/caddy:ro
       - ./data:/data
       - ./config:/config
       - ./certs:/certs
       - ./ca:/ca
-      - ./www:/usr/share/caddy
+      - ./www:/usr/share/caddy:ro
     environment:
       - TZ=America/Chicago
     ports:
@@ -25,24 +25,72 @@ services:
       # Admin port removed from exposure for security
       # Access admin API via: docker compose exec caddy ...
     depends_on:
-      - block-handler
+      block-handler:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:2019/config/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
 
   block-handler:
-    image: node:20-alpine
+    image: node:20.18-alpine
     container_name: block-handler
     restart: unless-stopped
     working_dir: /app
     networks:
       - caddy-network
     volumes:
-      - ./block-handler:/app
+      - ./block-handler:/app:ro
     command: node server.js
     env_file:
       - .env
     environment:
       - NODE_ENV=production
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    # Note: Running as non-root may require adjusting file permissions
+    # Uncomment if your files are owned by a specific user/group
+    # user: "1000:1000"
 
 networks:
   caddy-network:
     driver: bridge
+    ipam:
+      driver: default
 

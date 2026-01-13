@@ -116,6 +116,13 @@ function extractCategories(apiResponse) {
 }
 
 const server = http.createServer(async (req, res) => {
+    // Health check endpoint
+    if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', service: 'block-handler' }));
+        return;
+    }
+
     // Serve the logo file
     if (req.url === '/netskope-logo.png') {
         const logoPath = path.join(__dirname, 'netskope-logo.png');
